@@ -1,13 +1,14 @@
 # main.py
 """
-Orchestrator that glues all the modules together:
+Orchestrator that glues all the modules together for multiple RSS feeds:
 1. Load config & set up logging.
-2. Fetch new RSS items and determine which ones are unseen.
-3. For each new item:
-   - Download & clean the article body.
-   - Summarize it with LM Studio (respecting a character limit).
-4. Post the resulting summaries to Discord via webhook.
-5. Persist the processed URLs so we don’t repeat work.
+2. For each configured feed:
+   - Fetch new RSS items and determine which ones are unseen.
+   - For each new item:
+     * Download & clean the article body.
+     * Summarize it with LM Studio (respecting a character limit).
+   - Post the resulting summaries to the specified Discord webhook.
+   - Persist the processed URLs so we don't repeat work.
 """
 
 import sys
@@ -41,26 +42,35 @@ def setup_logging() -> None:
     )
 
 
-def main() -> None:
+def process_feed(feed_config: dict) -> None:
     """
-    Main entry point of the RSS‑to‑Discord bot.
-    The function follows the steps outlined in the module docstring
-    and logs each major operation for debugging purposes.
+    Process a single RSS feed configuration.
+    
+    Parameters
+    ----------
+    feed_config : dict
+        Feed configuration containing feed_name, url, webhook, max_articles
     """
-    setup_logging()
     log = logging.getLogger(__name__)
-    log.info("=== RSS Bot start ===")
-
+    feed_name = feed_config["feed_name"]
+    feed_url = feed_config["url"]
+    webhook_url = feed_config["webhook"]
+    max_articles = feed_config["max_articles"]
+    
+    log.info(f"=== Processing feed: {feed_name} ===")
+    
     # 1. RSS を取得し差分を判定
-    new_items, processed = get_new_items(cfg["feed_url"])
+    new_items, processed = get_new_items(feed_url, feed_name)
     if not new_items:
-        log.info("No new items.")
+        log.info(f"No new items for feed: {feed_name}")
         return
+    
+    log.info(f"Found {len(new_items)} new items for feed: {feed_name}")
 
     # 2〜4. 各記事を処理
     posts = []
-    for entry in new_items[: cfg["max_articles_per_batch"]]:
-        log.info(f"Processing: {entry.title}")
+    for entry in new_items[:max_articles]:
+        log.info(f"Processing ({feed_name}): {entry.title}")
         try:
             body = fetch_and_clean(entry.link)
             summary, truncated = summarize(
@@ -88,13 +98,41 @@ def main() -> None:
     # 5. Discord に投稿
     if posts:
         try:
-            post_to_webhook(posts, cfg["discord_webhook_url"])
-            log.info(f"Posted {len(posts)} articles to Discord.")
+            post_to_webhook(posts, webhook_url)
+            log.info(f"Posted {len(posts)} articles to Discord for feed: {feed_name}")
         except Exception as e:
-            log.error(f"Discord posting failed: {e}")
+            log.error(f"Discord posting failed for feed {feed_name}: {e}")
 
     # 6. processed.json を更新
-    save_processed(processed)
+    save_processed(processed, feed_name)
+    log.info(f"=== Finished processing feed: {feed_name} ===")
+
+
+def main() -> None:
+    """
+    Main entry point of the RSS‑to‑Discord bot.
+    Processes all configured feeds sequentially.
+    """
+    setup_logging()
+    log = logging.getLogger(__name__)
+    log.info("=== RSS Bot start ===")
+    
+    feeds = cfg.get("feeds", [])
+    if not feeds:
+        log.warning("No feeds configured. Exiting.")
+        return
+    
+    log.info(f"Processing {len(feeds)} feed(s)")
+    
+    # Process each feed
+    for feed_config in feeds:
+        try:
+            process_feed(feed_config)
+        except Exception as e:
+            feed_name = feed_config.get("feed_name", "unknown")
+            log.error(f"Error processing feed {feed_name}: {e}")
+            continue
+    
     log.info("=== RSS Bot finished ===")
 
 
