@@ -1,0 +1,21 @@
+services:
+  rss_bot:
+    build: .
+    container_name: rss_discord_bot
+    restart: unless-stopped
+
+    # .env ファイルを自動で読み込む
+    env_file:
+      - .env
+
+    # config.yaml は不要 → ここではマウントしない
+    volumes:
+      - ./data:/app/data
+
+    # LM Studio はホスト外にあるので、特別なネットワーク設定は不要
+
+    labels:
+      - "homepage.name=RSS Summarizer"
+      - "homepage.group=Bot"
+      - "homepage.href=https://github.com/kichinosukey/rss-summarizer-lm"
+      - "homepage.icon=https://upload.wikimedia.org/wikipedia/en/thumb/4/43/Feed-icon.svg/256px-Feed-icon.svg.png"
