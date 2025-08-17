@@ -6,6 +6,7 @@ The implementation uses `requests` to fetch the URL and
 """
 
 import requests
+import os
 from bs4 import BeautifulSoup
 from readability import Document
 
@@ -24,7 +25,10 @@ def fetch_and_clean(url: str) -> str:
     str
         Cleaned, plain‑text representation of the article body.
     """
-    resp = requests.get(url, timeout=30)
+    # タイムアウト設定を環境変数から取得
+    timeout = int(os.getenv('ARTICLE_TIMEOUT', '30'))  # デフォルト30秒
+    
+    resp = requests.get(url, timeout=timeout)
     resp.raise_for_status()
     doc = Document(resp.text)
     cleaned_html = doc.summary()

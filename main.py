@@ -13,6 +13,8 @@ Orchestrator that glues all the modules together for multiple RSS feeds:
 
 import sys
 import logging
+import os
+import time
 
 # ← ここで load_config() をインポート
 from src.config import load_config
@@ -27,6 +29,13 @@ from src.discord_poster import post_to_webhook
 # ----------------------------------------------------------------------
 # Load configuration once at module import time
 cfg = load_config()
+
+# 要約処理の制御変数
+SUMMARIZE_MAX_CALLS = int(os.getenv('SUMMARIZE_MAX_CALLS', '0'))  # 0 = 無制限
+SUMMARIZE_INTERVAL = float(os.getenv('SUMMARIZE_INTERVAL', '1.0'))  # 秒
+
+# グローバル変数
+summarize_call_count = 0
 # ----------------------------------------------------------------------
 
 
@@ -72,10 +81,24 @@ def process_feed(feed_config: dict) -> None:
     for entry in new_items[:max_articles]:
         log.info(f"Processing ({feed_name}): {entry.title}")
         try:
+            # 要約処理の上限チェック
+            global summarize_call_count
+            if SUMMARIZE_MAX_CALLS > 0 and summarize_call_count >= SUMMARIZE_MAX_CALLS:
+                log.info(f"Reached maximum summarize calls limit ({SUMMARIZE_MAX_CALLS}). Stopping article processing.")
+                break
+            
             body = fetch_and_clean(entry.link)
+            
+            # 要約処理間の間隔制御
+            if summarize_call_count > 0 and SUMMARIZE_INTERVAL > 0:
+                log.debug(f"Waiting {SUMMARIZE_INTERVAL}s before next summarize call")
+                time.sleep(SUMMARIZE_INTERVAL)
+            
             summary, truncated = summarize(
                 body, max_chars=cfg["summary_max_chars"]
             )
+            summarize_call_count += 1
+            
             if truncated:
                 log.warning(f"Summary truncated for {entry.link}")
         except Exception as e:
@@ -116,6 +139,7 @@ def main() -> None:
     setup_logging()
     log = logging.getLogger(__name__)
     log.info("=== RSS Bot start ===")
+    log.info(f"Summarize config: max_calls={SUMMARIZE_MAX_CALLS}, interval={SUMMARIZE_INTERVAL}s")
     
     feeds = cfg.get("feeds", [])
     if not feeds:
@@ -133,6 +157,7 @@ def main() -> None:
             log.error(f"Error processing feed {feed_name}: {e}")
             continue
     
+    log.info(f"Total summarize calls made: {summarize_call_count}")
     log.info("=== RSS Bot finished ===")
 
 

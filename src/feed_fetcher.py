@@ -16,7 +16,7 @@ get_new_items(feed_url: str, feed_name: str) -> tuple[list[dict], list[dict]]
     along with the current state (so callers can append to it).
 """
 
-import json, logging, feedparser, requests
+import json, logging, feedparser, requests, os
 from pathlib import Path
 
 
@@ -89,7 +89,9 @@ def get_new_items(feed_url: str, feed_name: str) -> tuple[list[dict], list[dict]
     }
     
     try:
-        resp = requests.get(feed_url, headers=headers, timeout=10)
+        # タイムアウト設定を環境変数から取得
+        timeout = int(os.getenv('FEED_TIMEOUT', '10'))  # デフォルト10秒
+        resp = requests.get(feed_url, headers=headers, timeout=timeout)
         resp.raise_for_status()
     except Exception as e:
         logging.error("RSS 取得失敗 (%s): %s", feed_name, e)

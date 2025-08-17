@@ -4,15 +4,21 @@ services:
     container_name: rss_discord_bot
     restart: unless-stopped
 
-    # .env ファイルを自動で読み込む
     env_file:
       - .env
 
-    # config.yaml は不要 → ここではマウントしない
+    environment:
+      - SUMMARIZE_MAX_CALLS=10
+      - SUMMARIZE_INTERVAL=300
+      - SUMMARIZE_TIMEOUT=300
+      - ARTICLE_TIMEOUT=30
+      - FEED_TIMEOUT=10
+      - TZ=Asia/Tokyo   # 追加（tzdataインストール済みの場合有効）
+
     volumes:
       - ./data:/app/data
-
-    # LM Studio はホスト外にあるので、特別なネットワーク設定は不要
+      - /etc/localtime:/etc/localtime:ro   # ホストの時刻設定を共有
+      - /etc/timezone:/etc/timezone:ro     # ホストのタイムゾーンを共有
 
     labels:
       - "homepage.name=RSS Summarizer"
