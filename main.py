@@ -39,6 +39,59 @@ summarize_call_count = 0
 # ----------------------------------------------------------------------
 
 
+def should_process_article(entry, body: str, feed_config: dict) -> bool:
+    """
+    記事がキーワードフィルタを通過するかチェック
+    
+    Parameters
+    ----------
+    entry : feedparser.FeedParserDict
+        RSS記事のエントリ
+    body : str
+        記事本文
+    feed_config : dict
+        フィード設定
+    
+    Returns
+    -------
+    bool
+        処理すべき記事の場合True
+    """
+    include_keywords = feed_config.get("include_keywords", [])
+    exclude_keywords = feed_config.get("exclude_keywords", [])
+    match_mode = feed_config.get("keyword_match_mode", "both")
+    
+    # キーワードフィルタが設定されていない場合は通す
+    if not include_keywords and not exclude_keywords:
+        return True
+    
+    # 検索対象テキスト決定
+    if match_mode == "title":
+        search_text = entry.title.lower()
+    elif match_mode == "content":
+        search_text = body.lower()
+    elif match_mode == "category":
+        # カテゴリタグから検索テキストを構築
+        categories = []
+        if hasattr(entry, 'tags') and entry.tags:
+            categories = [tag.term for tag in entry.tags if hasattr(tag, 'term')]
+        search_text = " ".join(categories).lower()
+    else:  # "both"
+        search_text = f"{entry.title} {body}".lower()
+    
+    # include_keywords チェック
+    if include_keywords:
+        if not any(keyword.lower() in search_text for keyword in include_keywords):
+            return False
+    
+    # exclude_keywords チェック
+    if exclude_keywords:
+        if any(keyword.lower() in search_text for keyword in exclude_keywords):
+            return False
+    
+    return True
+
+
 def setup_logging() -> None:
     """
     Configure the root logger according to `log_level` from config.
@@ -88,6 +141,16 @@ def process_feed(feed_config: dict) -> None:
                 break
             
             body = fetch_and_clean(entry.link)
+            
+            # キーワードフィルタチェック
+            if not should_process_article(entry, body, feed_config):
+                log.info(f"Skipped by keyword filter ({feed_name}): {entry.title}")
+                processed.append({
+                    "url": entry.link,
+                    "title": entry.title,
+                    "pubdate": getattr(entry, "published", ""),
+                })
+                continue
             
             # 要約処理間の間隔制御
             if summarize_call_count > 0 and SUMMARIZE_INTERVAL > 0:

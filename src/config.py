@@ -52,5 +52,13 @@ def load_config() -> dict:
         # max_articlesのデフォルト値設定
         if "max_articles" not in feed:
             feed["max_articles"] = 5
+        
+        # キーワードフィルタのデフォルト値設定
+        if "include_keywords" not in feed:
+            feed["include_keywords"] = []
+        if "exclude_keywords" not in feed:
+            feed["exclude_keywords"] = []
+        if "keyword_match_mode" not in feed:
+            feed["keyword_match_mode"] = "both"
 
     return cfg
