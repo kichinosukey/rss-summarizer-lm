@@ -14,11 +14,16 @@ def load_config() -> dict:
     Raises RuntimeError if any mandatory variable is missing.
     """
     # フィード設定を解析
-    feeds_json = os.getenv("FEEDS", "[]")
+    feeds_config_path = os.getenv("FEEDS_CONFIG_PATH", "./feeds.json")
+    
+    if not os.path.exists(feeds_config_path):
+        raise RuntimeError(f"Feeds configuration file not found: {feeds_config_path}")
+    
     try:
-        feeds = json.loads(feeds_json)
-    except json.JSONDecodeError:
-        raise RuntimeError("FEEDS environment variable contains invalid JSON")
+        with open(feeds_config_path, "r", encoding="utf-8") as f:
+            feeds = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        raise RuntimeError(f"Failed to read feeds configuration from {feeds_config_path}: {e}")
     
     cfg = {
         # 1️⃣ フィード設定（複数対応）

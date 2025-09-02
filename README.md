@@ -38,8 +38,14 @@ LM_STUDIO_MODEL=llama3
 LOG_LEVEL=INFO
 SUMMARY_MAX_CHARS=1800
 
-# 複数フィード設定（JSON配列）
-FEEDS='[
+# フィード設定ファイルのパス
+FEEDS_CONFIG_PATH=./feeds.json
+```
+
+`feeds.json`ファイルを作成：
+
+```json
+[
   {
     "feed_name": "raspberry-pi",
     "url": "https://www.xda-developers.com/tag/raspberry-pi/feed/",
@@ -52,7 +58,7 @@ FEEDS='[
     "webhook": "https://discord.com/api/webhooks/ANOTHER_WEBHOOK_ID/ANOTHER_TOKEN",
     "max_articles": 3
   }
-]'
+]
 ```
 
 ### 3. Docker実行（推奨）
@@ -86,6 +92,7 @@ python app.py
 │   ├── article_extractor.py # 記事コンテンツ抽出
 │   ├── summarizer.py    # LM Studio要約処理
 │   └── discord_poster.py # Discord webhook投稿
+├── feeds.json           # フィード設定ファイル
 ├── data/                # 実行時データ
 │   ├── processed_feed1.json # フィード別処理済み記事追跡
 │   ├── processed_feed2.json
@@ -107,16 +114,19 @@ python app.py
 | `LM_STUDIO_MODEL` | ❌ | 使用モデル名 | `llama3` |
 | `LOG_LEVEL` | ❌ | ログレベル | `INFO` |
 | `SUMMARY_MAX_CHARS` | ❌ | 要約の最大文字数 | `1800` |
-| `FEEDS` | ✅ | フィード設定のJSON配列 | `[]` |
+| `FEEDS_CONFIG_PATH` | ❌ | フィード設定ファイルのパス | `./feeds.json` |
 
 ### フィード設定
 
-`FEEDS`配列の各フィードには以下が必要：
+`feeds.json`ファイル内の各フィードには以下が必要：
 
 - `feed_name`: 一意な識別子（処理済みファイル名に使用）
 - `url`: RSSフィードのURL
 - `webhook`: Discord webhookのURL
 - `max_articles`: （オプション）1回あたりの最大記事数、デフォルトは5
+- `include_keywords`: （オプション）含むべきキーワード配列
+- `exclude_keywords`: （オプション）除外するキーワード配列
+- `keyword_match_mode`: （オプション）キーワードマッチモード（title/content/url/creator等）
 
 ## 🐳 Docker デプロイ
 
@@ -128,7 +138,8 @@ services:
   rss_bot:
     build: .
     volumes:
-      - ./data:/app/data  # 記事追跡の永続化
+      - ./data:/app/data           # 記事追跡の永続化
+      - ./feeds.json:/app/feeds.json:ro  # フィード設定ファイル
     env_file:
       - .env
 ```
@@ -192,18 +203,26 @@ Python パッケージ（`requirements.txt`参照）：
 
 ### 新しいフィードの追加
 
-`FEEDS`環境変数を更新するだけ：
+`feeds.json`ファイルを編集するだけ：
 
-```bash
-FEEDS='[
+```json
+[
   {
     "feed_name": "new-feed",
     "url": "https://example.com/new/feed.xml", 
     "webhook": "https://discord.com/api/webhooks/...",
-    "max_articles": 3
+    "max_articles": 3,
+    "include_keywords": ["キーワード1", "キーワード2"],
+    "keyword_match_mode": "title"
   }
-]'
+]
 ```
+
+**メリット:**
+- JSONエディタでの構文チェック
+- エディタでのlint適用
+- 設定変更の可視化
+- Gitでの差分管理改善
 
 ### 要約のカスタマイズ
 

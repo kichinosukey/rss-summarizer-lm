@@ -15,6 +15,7 @@ import sys
 import logging
 import os
 import time
+import re
 
 # ← ここで load_config() をインポート
 from src.config import load_config
@@ -37,6 +38,52 @@ SUMMARIZE_INTERVAL = float(os.getenv('SUMMARIZE_INTERVAL', '1.0'))  # 秒
 # グローバル変数
 summarize_call_count = 0
 # ----------------------------------------------------------------------
+
+
+def should_process_article_url_only(entry, feed_config: dict) -> bool:
+    """
+    URL/creatorベースのキーワードフィルタリングのみを実行
+    記事本文をダウンロードする前の早期チェック用
+    """
+    include_keywords = feed_config.get("include_keywords", [])
+    exclude_keywords = feed_config.get("exclude_keywords", [])
+    match_mode = feed_config.get("keyword_match_mode", "both")
+    
+    # URL/creator/organization/subject/description以外のモードまたはキーワード未設定の場合は通す
+    if match_mode not in ["url", "creator", "organization", "subject", "description"] or (not include_keywords and not exclude_keywords):
+        return True
+    
+    if match_mode == "url":
+        search_text = entry.link.lower()
+    elif match_mode == "creator":
+        # dc:creatorフィールドから検索テキストを取得
+        creator = getattr(entry, 'author', '') or getattr(entry, 'dc_creator', '')
+        search_text = creator.lower()
+    elif match_mode == "organization":
+        # cms:orgShortNameフィールドから検索テキストを取得
+        org_name = getattr(entry, 'cms_orgshortname', '') or getattr(entry, 'orgshortname', '')
+        search_text = org_name.lower()
+    elif match_mode == "subject":
+        # dc:subjectフィールドから検索テキストを取得
+        subject = getattr(entry, 'dc_subject', '') or getattr(entry, 'subject', '')
+        search_text = subject.lower()
+    elif match_mode == "description":
+        # descriptionフィールドからHTMLタグを除去して検索テキストを取得
+        description = getattr(entry, 'description', '') or getattr(entry, 'summary', '')
+        clean_description = re.sub(r'<[^>]+>', '', description)
+        search_text = clean_description.lower()
+    
+    # include_keywords チェック
+    if include_keywords:
+        if not any(keyword.lower() in search_text for keyword in include_keywords):
+            return False
+    
+    # exclude_keywords チェック  
+    if exclude_keywords:
+        if any(keyword.lower() in search_text for keyword in exclude_keywords):
+            return False
+    
+    return True
 
 
 def should_process_article(entry, body: str, feed_config: dict) -> bool:
@@ -76,6 +123,25 @@ def should_process_article(entry, body: str, feed_config: dict) -> bool:
         if hasattr(entry, 'tags') and entry.tags:
             categories = [tag.term for tag in entry.tags if hasattr(tag, 'term')]
         search_text = " ".join(categories).lower()
+    elif match_mode == "url":
+        search_text = entry.link.lower()
+    elif match_mode == "creator":
+        # dc:creatorフィールドから検索テキストを取得
+        creator = getattr(entry, 'author', '') or getattr(entry, 'dc_creator', '')
+        search_text = creator.lower()
+    elif match_mode == "organization":
+        # cms:orgShortNameフィールドから検索テキストを取得
+        org_name = getattr(entry, 'cms_orgshortname', '') or getattr(entry, 'orgshortname', '')
+        search_text = org_name.lower()
+    elif match_mode == "subject":
+        # dc:subjectフィールドから検索テキストを取得
+        subject = getattr(entry, 'dc_subject', '') or getattr(entry, 'subject', '')
+        search_text = subject.lower()
+    elif match_mode == "description":
+        # descriptionフィールドからHTMLタグを除去して検索テキストを取得
+        description = getattr(entry, 'description', '') or getattr(entry, 'summary', '')
+        clean_description = re.sub(r'<[^>]+>', '', description)
+        search_text = clean_description.lower()
     else:  # "both"
         search_text = f"{entry.title} {body}".lower()
     
@@ -134,6 +200,16 @@ def process_feed(feed_config: dict) -> None:
     for entry in new_items[:max_articles]:
         log.info(f"Processing ({feed_name}): {entry.title}")
         try:
+            # URL早期キーワードフィルタチェック
+            if not should_process_article_url_only(entry, feed_config):
+                log.info(f"Skipped by URL keyword filter ({feed_name}): {entry.title}")
+                processed.append({
+                    "url": entry.link,
+                    "title": entry.title,
+                    "pubdate": getattr(entry, "published", ""),
+                })
+                continue
+            
             # 要約処理の上限チェック
             global summarize_call_count
             if SUMMARIZE_MAX_CALLS > 0 and summarize_call_count >= SUMMARIZE_MAX_CALLS:
@@ -142,9 +218,9 @@ def process_feed(feed_config: dict) -> None:
             
             body = fetch_and_clean(entry.link)
             
-            # キーワードフィルタチェック
+            # 追加のキーワードフィルタチェック（title/content/both モード用）
             if not should_process_article(entry, body, feed_config):
-                log.info(f"Skipped by keyword filter ({feed_name}): {entry.title}")
+                log.info(f"Skipped by content keyword filter ({feed_name}): {entry.title}")
                 processed.append({
                     "url": entry.link,
                     "title": entry.title,
@@ -157,10 +233,37 @@ def process_feed(feed_config: dict) -> None:
                 log.debug(f"Waiting {SUMMARIZE_INTERVAL}s before next summarize call")
                 time.sleep(SUMMARIZE_INTERVAL)
             
-            summary, truncated = summarize(
-                body, max_chars=cfg["summary_max_chars"]
+            # 第1段階: 通常の要約生成
+            regular_prompt = (
+                f"以下の本文を日本語で3～4文に要約してください。"
+                f"最大でもおよそ{cfg['summary_max_chars']}文字に収めてください。"
+                "出力は必ず日本語のみとし、英語や見出し、説明は一切書かないでください。\n\n"
+                f"本文:\n{body}"
+            )
+            regular_summary, truncated = summarize(
+                regular_prompt, max_chars=cfg["summary_max_chars"]
             )
             summarize_call_count += 1
+            
+            # 第2段階: 小学生向け要約生成
+            if SUMMARIZE_INTERVAL > 0:
+                log.debug(f"Waiting {SUMMARIZE_INTERVAL}s before next summarize call")
+                time.sleep(SUMMARIZE_INTERVAL)
+            
+            kids_prompt = (
+                f"以下の要約を小学5年生でも理解できるように、やさしい日本語に言い換えてください。"
+                "難しい言葉は簡単な言葉に変えて、1～2文でまとめてください。"
+                "出力は必ず日本語のみとし、英語や見出し、説明は一切書かないでください。\n\n"
+                f"要約:\n{regular_summary}"
+            )
+            kids_summary, kids_truncated = summarize(
+                kids_prompt, max_chars=500
+            )
+            summarize_call_count += 1
+            
+            # 両方の要約を結合
+            summary = f"{regular_summary}\n\n【小学生向け】\n{kids_summary}"
+            truncated = truncated or kids_truncated
             
             if truncated:
                 log.warning(f"Summary truncated for {entry.link}")
@@ -169,7 +272,12 @@ def process_feed(feed_config: dict) -> None:
             continue
 
         posts.append(
-            {"title": entry.title, "summary": summary, "url": entry.link}
+            {
+                "title": entry.title, 
+                "summary": summary, 
+                "url": entry.link,
+                "pubdate": getattr(entry, "published", "")
+            }
         )
 
         # 既読に追加（差分管理）

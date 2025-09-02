@@ -8,6 +8,8 @@ content into multiple embeds if necessary.
 import requests
 import time
 from typing import List, Dict
+from datetime import datetime
+import email.utils
 
 def _split_long_text(text: str, limit: int) -> List[str]:
     """
@@ -37,10 +39,47 @@ def _split_long_text(text: str, limit: int) -> List[str]:
         text = text[len(part):].lstrip()
     return parts
 
+def _format_pubdate(pubdate: str) -> str:
+    """
+    RSS の published date を YYYY/MM/DD 形式に変換します。
+    
+    Parameters
+    ----------
+    pubdate : str
+        RSS フィードの published date (例: "Mon, 15 Jan 2024 10:30:00 GMT")
+    
+    Returns
+    -------
+    str
+        YYYY/MM/DD 形式の日付文字列。変換できない場合は元の文字列を返す。
+    """
+    if not pubdate:
+        return ""
+    
+    try:
+        # RFC 2822 形式をパース
+        parsed = email.utils.parsedate_tz(pubdate)
+        if parsed:
+            # タイムゾーン情報を含めてdatetimeオブジェクトに変換
+            dt = datetime(*parsed[:6])
+            return dt.strftime("%Y/%m/%d")
+    except:
+        pass
+    
+    # フォールバック: ISO形式など他の形式も試す
+    try:
+        # ISO 8601 形式など
+        dt = datetime.fromisoformat(pubdate.replace('Z', '+00:00'))
+        return dt.strftime("%Y/%m/%d")
+    except:
+        pass
+    
+    return pubdate  # 変換できない場合は元の文字列を返す
+
 def post_to_webhook(posts: List[Dict], webhook_url: str,
                     msg_limit: int = 2000, embed_desc_lim: int = 4096):
     """
-    posts : [{'title':..., 'summary':..., 'url':...}] のリスト
+    posts : [{'title':..., 'summary':..., 'url':..., 'pubdate':...}] のリスト
     webhook_url : Discord の Webhook URL
     msg_limit : content フィールドの最大文字数 (Discord で 2000)
     embed_desc_lim : embed description の最大文字数 (4096)
@@ -50,8 +89,16 @@ def post_to_webhook(posts: List[Dict], webhook_url: str,
     for p in posts:
         # タイトルは 256 文字以内に切り捨てる（Discord の embed title 上限）
         title = p["title"][:256]
+        
+        # 発行日を整形
+        pubdate = _format_pubdate(p.get("pubdate", ""))
+        pubdate_text = f"📅 {pubdate}" if pubdate else ""
 
         summary = p["summary"]
+        # 発行日情報をsummaryの先頭に追加
+        if pubdate_text:
+            summary = f"{pubdate_text}\n\n{summary}"
+            
         if len(summary) <= embed_desc_lim:
             # 1 つの embed に収まる場合
             embeds = [{"title": title, "url": p["url"], "description": summary}]

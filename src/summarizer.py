@@ -10,11 +10,13 @@ import requests
 import os
 from .config import load_config
 
-def summarize(text: str, max_chars: int = 1800) -> tuple[str, bool]:
+def summarize(prompt: str, max_chars: int = 1800) -> tuple[str, bool]:
     """
-    Ask LM Studio to summarize *text* into Japanese (3–4 sentences),
-    and then append one extra sentence as an easy-to-understand version
-    for elementary school students.
+    Ask LM Studio to process text based on the given prompt.
+    
+    Parameters:
+    - prompt: The complete prompt to send to LM Studio
+    - max_chars: Maximum characters for truncation if needed
     """
 
     cfg = load_config()
@@ -27,20 +29,6 @@ def summarize(text: str, max_chars: int = 1800) -> tuple[str, bool]:
             "LM Studio URL and model must be set in the environment "
             "(e.g. via .env or docker-compose env_file)."
         )
-
-    # Build the prompt – Japanese only + easy version
-    prompt = (
-        f"以下の本文を日本語で3～4文に要約してください。"
-        f"最大でもおよそ{max_chars}文字に収めてください。"
-        "出力は必ず日本語のみとし、英語や見出し、説明は一切書かないでください。\n\n"
-        "次に、その要約の直後に『小学生にも理解できる要約』を一文だけ追記してください。"
-        "この一文は、難しい言葉を使わず、小学5年生が理解できる程度のやさしい日本語にしてください。\n\n"
-        "本文:\n"
-        f"{text}\n\n"
-        "出力形式:\n"
-        "[要約]\n"
-        "[小学生にも理解できる要約]"
-    )
 
     payload = {
         "model": lm_studio_model,
