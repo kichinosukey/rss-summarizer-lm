@@ -24,7 +24,11 @@ cd rss-summarizer-lm
 ### 2. 環境設定
 
 ```bash
+# 環境変数設定
 cp .env.example .env
+
+# フィード設定ファイル作成
+cp feeds.json.example feeds.json
 ```
 
 `.env`ファイルを編集：
@@ -42,7 +46,7 @@ SUMMARY_MAX_CHARS=1800
 FEEDS_CONFIG_PATH=./feeds.json
 ```
 
-`feeds.json`ファイルを作成：
+`feeds.json`ファイルを編集（実際のwebhook URLに置き換え）：
 
 ```json
 [
@@ -60,6 +64,8 @@ FEEDS_CONFIG_PATH=./feeds.json
   }
 ]
 ```
+
+> **⚠️ 重要**: `feeds.json`には機密情報（webhook URL）が含まれるため、`.gitignore`で除外されています。`feeds.json.example`をテンプレートとして使用してください。
 
 ### 3. Docker実行（推奨）
 
@@ -127,6 +133,38 @@ python app.py
 - `include_keywords`: （オプション）含むべきキーワード配列
 - `exclude_keywords`: （オプション）除外するキーワード配列
 - `keyword_match_mode`: （オプション）キーワードマッチモード（title/content/url/creator等）
+
+## 🌐 HTTP/ネットワーク設計思想
+
+- 強いUA/言語/Acceptヘッダ: 多くのサイトは簡易なボット対策をしており、素のHTTPクライアントだと 400/403 を返すことがあります。本ツールは実ブラウザ相当の `User-Agent`、`Accept-Language`、`Accept` をデフォルトで付与します（共通実装）。
+- 軽量リトライ＋バックオフ: 一過性の失敗（接続系、`429/5xx`）に対してのみ、低回数かつ短いバックオフで再試行します。無駄に処理時間を延ばさない設計です。
+- 明示的なタイムアウト: RSS取得（FEED）と記事取得（ARTICLE）で別々のタイムアウトを持ち、環境変数で調整できます。遅いサイトに引っ張られないようにしています。
+- IPv6方針: コンテナにIPv6のデフォルト経路がない環境では `No route to host` を招くため、必要に応じてコンテナ内IPv6を無効化（Docker Composeの `sysctls`）することを推奨します。IPv6を使う場合はDocker側で正しく経路を構成してください。
+- HEADではなくGET: 一部サイトは`HEAD`を未実装/制限して 400/405 を返すため、本文取得は常に`GET`で行います。
+
+関連ファイル:
+- `src/http_session.py`（共通セッション、ヘッダ、リトライ設定）
+- `src/feed_fetcher.py`（RSS取得で共通セッションを使用）
+- `src/article_extractor.py`（記事本文取得で共通セッションを使用）
+
+### HTTP関連の環境変数（任意）
+- `FEED_TIMEOUT`: RSS取得のタイムアウト秒（デフォルト: 60）
+- `ARTICLE_TIMEOUT`: 記事取得のタイムアウト秒（デフォルト: 30）
+- `HTTP_UA`: 既定のUser-Agentを上書き
+- `HTTP_ACCEPT_LANGUAGE`: 既定は `ja-JP, ja;q=0.9`
+- `HTTP_ACCEPT`: 既定は `text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`
+- `HTTP_RETRY_TOTAL`: リトライ回数（デフォルト: 3）
+- `HTTP_RETRY_BACKOFF`: バックオフ係数（デフォルト: 0.5）
+
+IPv6無効化（任意・Docker Compose例）:
+
+```yaml
+services:
+  rss_bot:
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+```
 
 ## 🐳 Docker デプロイ
 

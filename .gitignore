@@ -208,3 +208,6 @@ __marimo__/
 
 # original
 data/*
+
+# Configuration files with sensitive information
+feeds.json

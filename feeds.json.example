@@ -1,0 +1,25 @@
+[
+  {
+    "feed_name": "example-tech",
+    "url": "https://example.com/tech/rss",
+    "webhook": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+    "max_articles": 5,
+    "include_keywords": ["keyword1", "keyword2"],
+    "exclude_keywords": ["sponsored", "ad"],
+    "keyword_match_mode": "title"
+  },
+  {
+    "feed_name": "example-news",
+    "url": "https://example.com/news/feed.xml",
+    "webhook": "https://discord.com/api/webhooks/ANOTHER_WEBHOOK_ID/ANOTHER_WEBHOOK_TOKEN",
+    "max_articles": 3
+  },
+  {
+    "feed_name": "example-blog",
+    "url": "https://blog.example.com/rss.xml",
+    "webhook": "https://discord.com/api/webhooks/BLOG_WEBHOOK_ID/BLOG_WEBHOOK_TOKEN",
+    "max_articles": 2,
+    "include_keywords": ["tutorial", "guide"],
+    "keyword_match_mode": "content"
+  }
+]

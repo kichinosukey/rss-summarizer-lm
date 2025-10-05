@@ -45,7 +45,7 @@ def load_config() -> dict:
         raise RuntimeError("Missing required env variable: LM_STUDIO_URL")
     
     if not cfg.get("feeds"):
-        raise RuntimeError("No feeds configured in FEEDS environment variable")
+        raise RuntimeError("No feeds configured in feeds.json file")
     
     # 各フィード設定の妥当性チェック
     for i, feed in enumerate(cfg["feeds"]):

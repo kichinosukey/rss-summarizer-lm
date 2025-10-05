@@ -18,6 +18,7 @@ get_new_items(feed_url: str, feed_name: str) -> tuple[list[dict], list[dict]]
 
 import json, logging, feedparser, requests, os
 from pathlib import Path
+from src.http_session import build_session, get_default_headers
 
 
 def _get_processed_path(feed_name: str) -> Path:
@@ -83,15 +84,13 @@ def get_new_items(feed_url: str, feed_name: str) -> tuple[list[dict], list[dict]
         - List of new feed entries (each is a `feedparser` entry object).
         - The current list of processed items as returned by :func:`load_processed`.
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; RSSBot/1.0)",
-        "Accept-Language": "ja-JP, ja;q=0.9",
-    }
+    headers = get_default_headers()
     
     try:
         # タイムアウト設定を環境変数から取得
-        timeout = int(os.getenv('FEED_TIMEOUT', '10'))  # デフォルト10秒
-        resp = requests.get(feed_url, headers=headers, timeout=timeout)
+        timeout = int(os.getenv('FEED_TIMEOUT', '60'))  # デフォルト60秒
+        session = build_session()
+        resp = session.get(feed_url, headers=headers, timeout=timeout)
         resp.raise_for_status()
     except Exception as e:
         logging.error("RSS 取得失敗 (%s): %s", feed_name, e)

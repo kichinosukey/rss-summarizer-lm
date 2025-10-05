@@ -34,6 +34,8 @@ cfg = load_config()
 # 要約処理の制御変数
 SUMMARIZE_MAX_CALLS = int(os.getenv('SUMMARIZE_MAX_CALLS', '0'))  # 0 = 無制限
 SUMMARIZE_INTERVAL = float(os.getenv('SUMMARIZE_INTERVAL', '1.0'))  # 秒
+# 記事取得間の待機（全体既定、per-feed 上書きなし）
+ARTICLE_REQUEST_INTERVAL = float(os.getenv('ARTICLE_REQUEST_INTERVAL', '0'))  # 秒（0で無効）
 
 # グローバル変数
 summarize_call_count = 0
@@ -173,13 +175,15 @@ def setup_logging() -> None:
 def process_feed(feed_config: dict) -> None:
     """
     Process a single RSS feed configuration.
-    
+
     Parameters
     ----------
     feed_config : dict
         Feed configuration containing feed_name, url, webhook, max_articles
     """
     log = logging.getLogger(__name__)
+    # 記事取得間隔はグローバル設定のみ使用（per-feed 上書きは廃止）
+    article_interval = ARTICLE_REQUEST_INTERVAL
     feed_name = feed_config["feed_name"]
     feed_url = feed_config["url"]
     webhook_url = feed_config["webhook"]
@@ -216,6 +220,11 @@ def process_feed(feed_config: dict) -> None:
                 log.info(f"Reached maximum summarize calls limit ({SUMMARIZE_MAX_CALLS}). Stopping article processing.")
                 break
             
+            # 記事本文取得の前にレート制御のため待機
+            if article_interval > 0:
+                log.debug(f"Waiting {article_interval}s before fetching article content")
+                time.sleep(article_interval)
+
             body = fetch_and_clean(entry.link)
             
             # 追加のキーワードフィルタチェック（title/content/both モード用）
